@@ -10,6 +10,11 @@ import mongoose from 'mongoose';
 import { fileURLToPath } from 'url';
 import bodyParser from 'body-parser';
 
+// controllers
+
+// routes
+import authRouter from './routes/auth.js';
+
 // configuration
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,6 +42,11 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+
+// ROUTES
+app.get('/health', async (req, res) => { res.status(200).json({ health: true }); });
+
+app.use('/auth', authRouter);
 
 // MONGO SETUP
 const PORT = process.env.PORT || 3001;

@@ -99,6 +99,7 @@
     "no-bitwise": ["error"],
     "no-new-func": ["error"],
     "import/named": ["error"],
+    "import/extensions": ["error", "ignorePackages", {"js": "always"}],
     "no-unreachable": ["error"],
     "no-throw-literal": ["error"],
     "no-useless-rename": ["error"],
