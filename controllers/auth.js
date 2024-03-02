@@ -30,7 +30,9 @@ export const login = async (req, res) => {
     if (!user) { return res.status(StatusCodes.NOT_FOUND).json({ message: 'User with such email and password doesn\'t exist' }); }
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) { return res.status(StatusCodes.NOT_FOUND).json({ message: 'User with such email and password doesn\'t exist' }); }
-    return res.status(StatusCodes.OK).json({ accessToken: '', refreshToken: '' });
+    const accessToken = jwt.sign({ id: user._id, type: 'access' }, process.env.JWT_ACCESS_SECRET, { expiresIn: Number(process.env.JWT_ACCESS_LIFETIME || '3600') });
+    const refreshToken = jwt.sign({ id: user._id, type: 'refresh' }, process.env.JWT_ACCESS_SECRET, { expiresIn: Number(process.env.JWT_REFRESH_LIFETIME || '86400') });
+    return res.status(StatusCodes.OK).json({ accessToken, refreshToken });
   } catch (error) {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error, message: error });
   }
