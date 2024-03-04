@@ -106,6 +106,24 @@ const deleteUserExpiredTokens = async userId => {
   }
 };
 
+const generateAccessToken = async user => {
+  const accessTokenExp = Math.floor(Date.now() / 1e3) + Number(process.env.JWT_ACCESS_LIFETIME || 3600);
+  const accessTokenDoc = await new TokenModel({
+    user: user._id,
+    type: TOKEN_TYPE.ACCESS,
+    expires: new Date(accessTokenExp * 1e3),
+  }).save();
+  return jwt.sign({
+    id: user._id,
+    type: 'access',
+    email: user.email,
+    exp: accessTokenExp,
+    tid: accessTokenDoc._id,
+    lastName: user.lastName,
+    firstName: user.firstName,
+  }, process.env.JWT_ACCESS_SECRET);
+};
+
 export const login = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -117,21 +135,7 @@ export const login = async (req, res) => {
     if (!user) { return res.status(StatusCodes.NOT_FOUND).json({ message: 'Invalid credentials', errorCode: 'invalid_credentials' }); }
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) { return res.status(StatusCodes.NOT_FOUND).json({ message: 'Invalid credentials', errorCode: 'invalid_credentials' }); }
-    const accessTokenExp = Math.floor(Date.now() / 1e3) + Number(process.env.JWT_ACCESS_LIFETIME || 3600);
-    const accessTokenDoc = await new TokenModel({
-      user: user._id,
-      type: TOKEN_TYPE.ACCESS,
-      expires: new Date(accessTokenExp * 1e3),
-    }).save();
-    const accessToken = jwt.sign({
-      id: user._id,
-      type: 'access',
-      email: user.email,
-      exp: accessTokenExp,
-      tid: accessTokenDoc._id,
-      lastName: user.lastName,
-      firstName: user.firstName,
-    }, process.env.JWT_ACCESS_SECRET);
+    const accessToken = await generateAccessToken(user);
 
     const refreshTokenExp = Math.floor(Date.now() / 1e3) + Number(process.env.JWT_REFRESH_LIFETIME || 86400);
     const refreshTokenDoc = await new TokenModel({
@@ -176,5 +180,40 @@ export const logout = async (req, res) => {
       return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error });
     }
     return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Authorization data is invalid', errorCode: 'unauthorized' });
+  }
+};
+
+export const refreshAccessToken = async (req, res) => {
+  try {
+    const authHeader = req.header('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Authorization data is invalid', errorCode: 'unauthorized' });
+    }
+    const expiredAccessToken = authHeader.replace('Bearer ', '');
+    const decoded = jwt.verify(expiredAccessToken, process.env.JWT_ACCESS_SECRET, { ignoreExpiration: true });
+    const { refreshToken } = req.body;
+    try {
+      const decodedRefresh = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+      if (decoded.id !== decodedRefresh.id) { throw new Error('invalid-refresh-or-access-token'); }
+      await deleteUserExpiredTokens(decodedRefresh.id);
+      const isTokenExist = await TokenModel.exists({ _id: decodedRefresh.tid, user: decodedRefresh.id }).exec();
+      if (!isTokenExist) { throw new Error('invalid-refresh-token'); }
+      const user = await UserModel.findById(decodedRefresh.id).exec();
+      const accessToken = await generateAccessToken(user);
+      return res.status(StatusCodes.OK).json({ accessToken });
+    } catch (error) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Authorization data is invalid', errorCode: 'unauthorized' });
+    }
+  } catch (error) {
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error });
+  }
+};
+
+export const getMe = async (req, res) => {
+  try {
+    const user = await UserModel.findById(req.userId).exec();
+    return res.status(StatusCodes.OK).json(user);
+  } catch (error) {
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error });
   }
 };
