@@ -1,6 +1,6 @@
 // outsource dependencies
-import { StatusCodes, ReasonPhrases } from 'http-status-codes';
 import { validationResult } from 'express-validator';
+import { StatusCodes, ReasonPhrases } from 'http-status-codes';
 
 export const validate = async (req, res, next) => {
   try {

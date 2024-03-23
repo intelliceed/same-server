@@ -73,7 +73,7 @@ export const register = async (req, res) => {
 
     return res.status(StatusCodes.CREATED).json({ ...newUser, password: undefined });
   } catch (error) {
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: error?.message, error });
   }
 };
 
@@ -135,7 +135,7 @@ export const login = async (req, res) => {
 
     return res.status(StatusCodes.OK).json({ accessToken, refreshToken });
   } catch (error) {
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: error?.message, error });
   }
 };
 
@@ -158,7 +158,7 @@ export const logout = async (req, res) => {
     return res.status(StatusCodes.OK).json({ success: true });
   } catch (error) {
     if (error?.name !== 'JsonWebTokenError') {
-      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error });
+      return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: error?.message, error });
     }
     return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Authorization data is invalid', errorCode: 'unauthorized' });
   }
@@ -199,7 +199,7 @@ export const refreshAccessToken = async (req, res) => {
       return res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Authorization data is invalid', errorCode: 'unauthorized' });
     }
   } catch (error) {
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: error?.message, error });
   }
 };
 
@@ -208,6 +208,67 @@ export const getMe = async (req, res) => {
     const user = await UserModel.findById(req.authData?.userId).exec();
     return res.status(StatusCodes.OK).json(user);
   } catch (error) {
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: error?.message, error });
+  }
+};
+
+export const forgotPasswordValidator = [
+  body('email')
+    .trim()
+    .notEmpty()
+    .withMessage('email is required'),
+];
+
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await UserModel.findOne({ email }).exec();
+    if (!user) { return res.status(StatusCodes.NOT_FOUND).json({ message: 'No user found with such email', errorCode: 'user_not_found' }); }
+    const token = jwt.sign({ email: user.email, type: TOKEN_TYPE.RESET }, process.env.JWT_RESET_SECRET, { expiresIn: '1h' });
+    const decodedToken = jwt.decode(token);
+    const resetTokenDoc = await new TokenModel({
+      value: token,
+      user: user._id,
+      type: TOKEN_TYPE.RESET,
+      expires: new Date(decodedToken.exp * 1e3),
+    }).save();
+
+
+    return res.status(StatusCodes.OK).json({ data: `http://localhost:5172/auth/reset-password?token=${token}` });
+  } catch (error) {
+    if (error?.name !== 'JsonWebTokenError') { return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: error?.message, error }); }
+  }
+};
+
+export const resetPasswordValidator = [
+  body('password')
+    .trim()
+    .notEmpty()
+    .withMessage('password field is required')
+    .bail()
+    .isLength({ min: 8 })
+    .withMessage('Password MUST be at least 8 characters long'),
+  body('token')
+    .trim()
+    .notEmpty()
+    .withMessage('token is required'),
+];
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { password, token } = req.body;
+    const decoded = jwt.verify(token, process.env.JWT_RESET_SECRET);
+    const tokenDoc = await TokenModel.findOne({ value: token }).exec();
+    if (!tokenDoc) { throw new Error('Invalid or expired reset password link'); }
+    const user = await UserModel.findById(tokenDoc.user).exec();
+    if (!user) { return res.status(StatusCodes.NOT_FOUND).json({ message: 'No users found with such email', errorCode: 'user_not_found' }); }
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
+    await user.save();
+    await TokenModel.findByIdAndDelete(tokenDoc._id);
+    return res.status(StatusCodes.OK).json({ success: true });
+  } catch (error) {
+    if (error?.name !== 'JsonWebTokenError') { return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: error?.message, error }); }
+    return res.status(StatusCodes.BAD_REQUEST).json({ message: 'Invalid reset password link', errorCode: 'invalid_token' });
   }
 };
