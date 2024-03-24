@@ -1,4 +1,7 @@
+// outsource dependencies
 import mongoose from 'mongoose';
+
+// local dependencies
 import { USER_ROLE } from '../constants/index.js';
 
 const UserSchema = new mongoose.Schema({
