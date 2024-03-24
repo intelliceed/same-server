@@ -174,9 +174,9 @@ export const refreshAccessToken = async (req, res) => {
       if ((decoded.id !== decodedRefresh.id) || (decoded.sid !== decodedRefresh.sid)) { throw new Error('invalid-refresh-or-access-token'); }
       await deleteUserExpiredTokens(decodedRefresh.id);
       const refreshTokenDoc = await TokenModel.findOne({
-        sid: decodedRefresh.sid,
         user: decodedRefresh.id,
         type: TOKEN_TYPE.REFRESH,
+        session: decodedRefresh.sid,
       }).exec();
       if (!refreshTokenDoc) { throw new Error('invalid-refresh-token'); }
       const user = await UserModel.findById(decodedRefresh.id).exec();
@@ -188,11 +188,13 @@ export const refreshAccessToken = async (req, res) => {
         firstName: user.firstName,
         sid: refreshTokenDoc.session,
       }, process.env.JWT_ACCESS_SECRET, { expiresIn: Number(process.env.JWT_ACCESS_LIFETIME || 3600) });
+      const decodedAccessToken = jwt.decode(accessToken);
       const accessTokenDoc = await new TokenModel({
         user: user._id,
+        value: accessToken,
         type: TOKEN_TYPE.ACCESS,
         session: refreshTokenDoc.session,
-        expires: new Date(accessToken.exp),
+        expires: new Date(decodedAccessToken.exp),
       }).save();
       return res.status(StatusCodes.OK).json({ accessToken });
     } catch (error) {

@@ -5,3 +5,8 @@ export const TOKEN_TYPE = {
   ACCESS: 'access',
   REFRESH: 'refresh',
 };
+
+export const USER_ROLE = {
+  USER: 'user',
+  ADMIN: 'admin',
+};
